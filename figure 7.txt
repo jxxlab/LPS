@@ -1,0 +1,115 @@
+getwd();suppressMessages(library(Seurat));library(Matrix);suppressMessages(library(dplyr));library(ggplot2);suppressMessages(library(monocle));suppressMessages(library(SeuratDisk))
+suppressMessages(library(cowplot));suppressMessages(library('pagoda2'));suppressMessages(library("velocyto.R"));suppressMessages(library("patchwork"))
+library("RColorBrewer");library(scales);library(SeuratWrappers);library(argparser);suppressMessages(library(harmony))
+suppressMessages(library(monocle3));suppressMessages(library(clusterProfiler));suppressMessages(library(org.Hs.eg.db))
+setwd("/home/ahmu/ZXK/LPS/");getwd();.libPaths()
+
+# ----------------------------
+# Figure 7A
+# ----------------------------
+pbmc1 <- readRDS("LPS-sub13-7474.rds")
+
+Idents(pbmc1)="C4"
+options(repr.plot.width=7, repr.plot.height=6)
+DimPlot(object = pbmc1,cols = colorRampPalette(brewer.pal(12, "Paired"))(4),label = T,label.size = 8)+ theme(legend.key.height=unit(0.28,"inch"),axis.text=element_blank(),axis.ticks=element_blank(),legend.text=element_text(size=20,face="plain"),text=element_text(size=20,face="plain"))
+
+Idents(pbmc1)="groups"
+
+pbmc1.markers <- FindAllMarkers(object = pbmc1, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+dim(pbmc1.markers)
+
+pbmc1x <- ScaleData(pbmc1,  features = rownames(pbmc1))
+
+pbmc1.markers %>% group_by(cluster) %>% top_n(n = 20,  wt = avg_log2FC) -> top20
+
+options(repr.plot.width=10, repr.plot.height=15) 
+DoHeatmap(pbmc1x, features = as.character(top20$gene)) + NoLegend() +theme(text=element_text( size=24, face="bold.italic"))
+
+# ----------------------------
+# Figure 7B
+# ----------------------------
+pbmc4 <- readRDS("LPS-sub1&2-12787.rds")
+
+Idents(pbmc4)="groups"
+
+pbmc4.markers <- FindAllMarkers(object = pbmc4, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+dim(pbmc4.markers)
+
+pbmc4x <- ScaleData(pbmc4,  features = rownames(pbmc4))
+
+pbmc4.markers %>% group_by(cluster) %>% top_n(n = 20,  wt = avg_log2FC) -> top20
+
+options(repr.plot.width=10, repr.plot.height=15) 
+DoHeatmap(pbmc4x, features = as.character(top20$gene)) + NoLegend() +theme(text=element_text( size=24, face="bold.italic"))
+# ----------------------------
+# Figure 7C
+# ----------------------------
+pbmc <- readRDS("LPS-all-13-45052.rds")
+
+Idents(pbmc)="C13"
+options(repr.plot.width=6, repr.plot.height=6)
+DimPlot(object = pbmc,label = T,label.size =8,repel=F)+  theme(axis.line=element_blank(),axis.title=element_blank(),axis.text=element_blank(),axis.ticks=element_blank(),legend.text=element_text(size=20,face="plain"),legend.key.height=unit(0.5,"inch"),text=element_text(size=20,face="plain"),strip.text=element_text(size=20))
+
+pbmc2=subset(pbmc, idents =c("12"));  pbmc2
+
+Idents(pbmc2)="groups"
+
+pbmc2.markers <- FindAllMarkers(object = pbmc2, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+dim(pbmc2.markers)
+
+pbmc2x <- ScaleData(pbmc2,  features = rownames(pbmc2))
+
+pbmc2.markers %>% group_by(cluster) %>% top_n(n = 20,  wt = avg_log2FC) -> top20
+
+options(repr.plot.width=10, repr.plot.height=15) 
+DoHeatmap(pbmc2x, features = as.character(top20$gene)) + NoLegend() +theme(text=element_text( size=24, face="bold.italic"))
+
+# ----------------------------
+# Figure 7D
+# ----------------------------
+pbmc2=subset(pbmc, idents =c("11"));  pbmc2
+
+Idents(pbmc2)="groups"
+
+pbmc2.markers <- FindAllMarkers(object = pbmc2, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+dim(pbmc2.markers)
+
+pbmc2x <- ScaleData(pbmc2,  features = rownames(pbmc2))
+
+pbmc2.markers %>% group_by(cluster) %>% top_n(n = 20,  wt = avg_log2FC) -> top20
+
+options(repr.plot.width=10, repr.plot.height=15) 
+DoHeatmap(pbmc2x, features = as.character(top20$gene)) + NoLegend() +theme(text=element_text( size=24, face="bold.italic"))
+
+# ----------------------------
+# Figure 7E
+# ----------------------------
+pbmc3=subset(pbmc, idents =c("8"));  pbmc3
+
+Idents(pbmc3)="groups"
+
+pbmc3.markers <- FindAllMarkers(object = pbmc3, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+dim(pbmc3.markers)
+
+pbmc3x <- ScaleData(pbmc3,  features = rownames(pbmc3))
+
+pbmc3.markers %>% group_by(cluster) %>% top_n(n = 20,  wt = avg_log2FC) -> top20
+
+options(repr.plot.width=10, repr.plot.height=15) 
+DoHeatmap(pbmc3x, features = as.character(top20$gene)) + NoLegend() +theme(text=element_text( size=24, face="bold.italic"))
+# ----------------------------
+# Figure 7F
+# ----------------------------
+pbmc3=subset(pbmc, idents =c("9"));  pbmc3
+
+Idents(pbmc3)="groups"
+
+pbmc3.markers <- FindAllMarkers(object = pbmc3, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+dim(pbmc3.markers)
+
+pbmc3x <- ScaleData(pbmc3,  features = rownames(pbmc3))
+
+pbmc3.markers %>% group_by(cluster) %>% top_n(n = 20,  wt = avg_log2FC) -> top20
+
+options(repr.plot.width=10, repr.plot.height=15) 
+DoHeatmap(pbmc3x, features = as.character(top20$gene)) + NoLegend() +theme(text=element_text( size=24, face="bold.italic"))
