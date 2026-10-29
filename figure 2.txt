@@ -1,5 +1,5 @@
 # ----------------------------
-# Figures 2A-2D
+# Figures 2A-2C
 # ----------------------------
 getwd();suppressMessages(library(Seurat));library(Matrix);suppressMessages(library(dplyr));library(ggplot2);suppressMessages(library(monocle));suppressMessages(library(SeuratDisk))
 suppressMessages(library(cowplot));suppressMessages(library('pagoda2'));suppressMessages(library("velocyto.R"));suppressMessages(library("patchwork"))
