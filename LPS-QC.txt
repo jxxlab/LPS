@@ -1,0 +1,50 @@
+getwd();suppressMessages(library(Seurat));library(Matrix);suppressMessages(library(dplyr));library(ggplot2);suppressMessages(library(monocle));suppressMessages(library(SeuratDisk))
+suppressMessages(library(cowplot));suppressMessages(library('pagoda2'));suppressMessages(library("velocyto.R"));suppressMessages(library("patchwork"))
+library("RColorBrewer");library(scales);library(SeuratWrappers);library(argparser);suppressMessages(library(harmony))
+setwd("/home/ahmu/LQB/LPS/小鼠墨卓/DATA/");getwd();.libPaths()
+
+M1=Read10X("/home/ahmu/LQB/LPS/6-5PBS/6-5PBS-MZ_outs/filtered_cell_gene_matrix");
+M2=Read10X("/home/ahmu/LQB/LPS/6-5LPS/6-5LPS-MZ_outs/filtered_cell_gene_matrix");
+M3=Read10X("/home/ahmu/LQB/LPS/7-5GFP-1/7-5GFP-MZ_outs/filtered_cell_gene_matrix");
+M4=Read10X("/home/ahmu/LQB/LPS/7-5LPS/7-5LPS-MZ_outs/filtered_cell_gene_matrix");
+M5=Read10X("/home/ahmu/LQB/LPS/8-5PBS/8-5PBS-MZ_outs/filtered_cell_gene_matrix");
+M6=Read10X("/home/ahmu/LQB/LPS/8-5LPS/8-5LPS-MZ_outs/filtered_cell_gene_matrix");
+
+M1<- CreateSeuratObject(M1,project ='6.5PBS')
+M2<- CreateSeuratObject(M2,project ='6.5LPS')
+M3<- CreateSeuratObject(M3,project ='7.5PBS')
+M4<- CreateSeuratObject(M4,project ='7.5LPS')
+M5<- CreateSeuratObject(M5,project ='8.5PBS')
+M6<- CreateSeuratObject(M6,project ='8.5LPS')
+
+pbmc <- merge(x =M1, y = c(M2,M3,M4,M5,M6),add.cell.ids = c('6.5PBS','6.5LPS','7.5PBS','7.5LPS','8.5PBS','8.5LPS')); pbmc
+
+levels(pbmc)=c('6.5PBS','6.5LPS','7.5PBS','7.5LPS','8.5PBS','8.5LPS')
+
+pbmc$orig.ident=Idents(pbmc)
+
+pbmc <- CreateSeuratObject(pbmc$RNA@counts,meta=pbmc@meta.data, min.cells = 3);pbmc
+table(pbmc$orig.ident)
+head(colnames(pbmc))
+
+pbmc[["percent.mt"]] <- PercentageFeatureSet(pbmc, pattern = "^mt-")
+
+options(repr.plot.width=24, repr.plot.height=24)
+VlnPlot(pbmc, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),group.by='orig.ident', ncol = 1)&theme(axis.title=element_blank(),axis.text=element_text(size=20),text=element_text(size=15,face="plain"))
+
+pbmc2=pbmc, pbmc <- subset(pbmc2, subset = nFeature_RNA >500 & percent.mt <20);pbmc
+
+Idents(pbmc, cells = WhichCells(pbmc,idents = "8.5LPS")) <- "6"
+Idents(pbmc, cells = WhichCells(pbmc,idents = "8.5PBS")) <- "5"
+Idents(pbmc, cells = WhichCells(pbmc,idents = "7.5LPS")) <- "4"
+Idents(pbmc, cells = WhichCells(pbmc,idents = "7.5PBS")) <- "3"
+Idents(pbmc, cells = WhichCells(pbmc,idents = "6.5LPS")) <- "2"
+Idents(pbmc, cells = WhichCells(pbmc,idents = "6.5PBS")) <- "1"
+pbmc$orig=Idents(pbmc)
+
+rite.csv(as.matrix(subset(pbmc,idents =1)$RNA@counts), "6.5PBS.csv"); write.csv(subset(pbmc,idents =1)@meta.data, "6.5PBSD.csv")
+write.csv(as.matrix(subset(pbmc,idents =2)$RNA@counts), "6.5LPS.csv"); write.csv(subset(pbmc,idents =2)@meta.data, "6.5LPSD.csv")
+write.csv(as.matrix(subset(pbmc,idents =3)$RNA@counts), "7.5PBS.csv"); write.csv(subset(pbmc,idents =3)@meta.data, "7.5PBSD.csv")
+write.csv(as.matrix(subset(pbmc,idents =4)$RNA@counts), "7.5LPS.csv"); write.csv(subset(pbmc,idents =4)@meta.data, "7.5LPSD.csv")
+write.csv(as.matrix(subset(pbmc,idents =5)$RNA@counts), "8.5PBS.csv"); write.csv(subset(pbmc,idents =5)@meta.data, "8.5PBSD.csv")
+write.csv(as.matrix(subset(pbmc,idents =6)$RNA@counts), "8.5LPS.csv"); write.csv(subset(pbmc,idents =5)@meta.data, "8.5LPSD.csv")

@@ -1,0 +1,340 @@
+getwd();suppressMessages(library(Seurat));library(Matrix);suppressMessages(library(dplyr));library(ggplot2);suppressMessages(library(monocle));suppressMessages(library(SeuratDisk))
+suppressMessages(library(cowplot));suppressMessages(library('pagoda2'));suppressMessages(library("velocyto.R"));suppressMessages(library("patchwork"))
+library("RColorBrewer");library(scales);library(SeuratWrappers);library(argparser);suppressMessages(library(harmony))
+suppressMessages(library(monocle3));suppressMessages(library(clusterProfiler));suppressMessages(library(org.Hs.eg.db))
+setwd("/home/ahmu/ZXK/LPS/");getwd();.libPaths();packageVersion('Seurat')
+
+library('homologene')
+
+pbmc <- readRDS("LPS-all-13-45052.rds")
+
+Idents(pbmc)="C13"
+options(repr.plot.width=6, repr.plot.height=6)
+DimPlot(object = pbmc,label = T,label.size =8,repel=F)+  theme(axis.line=element_blank(),axis.title=element_blank(),axis.text=element_blank(),axis.ticks=element_blank(),legend.text=element_text(size=20,face="plain"),legend.key.height=unit(0.5,"inch"),text=element_text(size=20,face="plain"),strip.text=element_text(size=20))
+
+options(repr.plot.width=12, repr.plot.height=8)
+DimPlot(object = pbmc,label = T,label.size =10,repel=F)+  theme(axis.line=element_blank(),axis.title=element_blank(),axis.text=element_blank(),axis.ticks=element_blank(),legend.text=element_text(size=28,face="plain"),legend.key.height=unit(0.5,"inch"),text=element_text(size=20,face="plain"),strip.text=element_text(size=20))  +
+scale_colour_manual(values=colorRampPalette(brewer.pal(12, "Paired"))(13)[as.numeric(names(table(Idents(pbmc))))],labels =rownames(table(pbmc$celltype1))) 
+
+pbmc.markers <- FindAllMarkers(object = pbmc, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+dim(pbmc.markers)
+
+pbmcx <- ScaleData(pbmc,  features = rownames(pbmc)), dim(pbmc$RNA@scale.data)
+
+cols = colorRampPalette(brewer.pal(12, "Paired"))(13)
+pbmc.markers %>% group_by(cluster) %>% top_n(n = -10,  wt = p_val_adj) -> top10
+top10 %>% group_by(cluster) %>% top_n(n = 5,  wt = avg_log2FC) -> top10
+length(top10$gene)
+options(repr.plot.width=12, repr.plot.height=20)
+DoHeatmap(
+  object = pbmcx,
+  features = as.character(top10$gene),
+  cells = sample(colnames(pbmc), 10000),
+  group.colors = cols  
+) + 
+  NoLegend() +
+  theme(text = element_text(size=24, face = "italic"))
+
+a=AverageExpression(pbmcx,slot = "scale.data")$RNA
+head(a)
+
+pbmc.markers %>% group_by(cluster) %>% top_n(n = 5,  wt = avg_log2FC) -> top5
+y=a[unique(as.character(top5$gene)),]
+dim(y)
+
+library(pheatmap);library(Seurat);library(Matrix);library(dplyr);library(ggplot2);suppressMessages(library(tidyverse));library(RColorBrewer)
+make_bold_names <- function(mat, rc_fun, rc_names) {
+  bold_names <- rc_fun(mat)
+  ids <- rc_names %>% match(rc_fun(mat))
+  ids %>%
+    walk(
+      function(i)
+        bold_names[i] <<-
+        bquote(italic(.(rc_fun(mat)[i]))) %>%
+        as.expression()
+    )
+  bold_names
+}
+
+annotation_col = data.frame(
+  Cell_Type = factor(names(table(pbmc$C13))))
+rownames(annotation_col) =factor(names(table(pbmc$C13)))
+head(annotation_col);dim(annotation_col)
+
+options(repr.plot.width=16, repr.plot.height=3)
+x=c('#635547','#DABE99','#9e6762','#FACB12','#c19f70','#0F4A9C','#F397C0','#EF5A9D','#C594BF','#DFCDE4',
+    '#139992','#3F84AA','#8DB5CE','#005579','#C9EBFB','#B51D8D','#532C8A','#8870ad','#cc7818','#FBBE92',
+    '#f9decf','#c9a997','#354E25','#f79083','#EF4E22','#C3C388','#647a4f','#65A83E','#C72228','#ff891c',
+    '#8EC792','#CDE088','#f7f79e','#F6BFCB','#7F6874','#666666','#989898','#1A1A1A')  
+length(x)
+barplot(rep(2,38),col=x)
+
+Cell_Type=cbind(rownames(table(pbmc$C13)),x[as.numeric(names(table(pbmc$C13)))])
+rownames(Cell_Type)=Cell_Type[,1];Cell_Type=Cell_Type[,2]
+head(Cell_Type)
+ann_colors = list(Cell_Type=Cell_Type); head(ann_colors)
+
+options(repr.plot.width=8, repr.plot.height=24)
+pheatmap(y,  annotation_legend = FALSE,fontsize=16,  cluster_cols = F, color =  colorRampPalette(c("SkyBlue","white", "Tomato","DarkRed"))(60),
+         breaks=seq(-2,4,0.1),         cluster_rows =F,  border=T,angle_col=0,labels_row = make_bold_names(y, rownames, rownames(y)))
+
+# 1
+cols <- colorRampPalette(brewer.pal(12, "Paired"))(13)
+names(cols) <- as.character(1:13)
+
+# 2
+annotation_col <- data.frame(
+  Cell_Type = factor(colnames(y), levels = as.character(1:13))
+)
+rownames(annotation_col) <- colnames(y)
+
+# 3
+ann_colors <- list(
+  Cell_Type = cols
+)
+
+# 4
+options(repr.plot.width = 8, repr.plot.height = 15)
+
+pheatmap(
+  y,
+  annotation_col = annotation_col,
+  annotation_colors = ann_colors,
+  annotation_legend = FALSE,
+  fontsize = 16,
+  cluster_cols = FALSE,
+  cluster_rows = FALSE,
+  border = TRUE,
+  angle_col = 0,
+  color = colorRampPalette(c("SkyBlue","white","Tomato","DarkRed"))(60),
+  breaks = seq(-2, 4, 0.1),
+  labels_row = make_bold_names(y, rownames, rownames(y))
+)
+
+fdf=pbmc.markers[,c(6,7)]
+sdf = split(fdf, list(fdf$cluster))
+y=NULL
+for (i in as.character(unique(fdf$cluster))) {
+  y[[i]] <- bitr(sdf[[i]]$gene, fromType = "SYMBOL", toType = "ENTREZID", OrgDb ="org.Mm.eg.db")$ENTREZID
+}
+str(y)
+
+gobp <- compareCluster(geneCluster = y, fun = "enrichGO",
+                       OrgDb = "org.Mm.eg.db",keyType = 'ENTREZID',readable =T,
+                       ont = "BP",  minGSSize = 2, maxGSSize = 2000,
+                       pAdjustMethod = "BH",
+                       pvalueCutoff = 0.0001)   
+dim(gobp)
+
+gobpsim <- clusterProfiler::simplify(gobp, cutoff=0.7, by="p.adjust", select_fun=min, measure = "Wang", semData = NULL); dim(gobpsim)
+
+options(repr.plot.width=24, repr.plot.height=20)
+dotplot(gobpsim, font.size=15, showCategory=10,title="GO-BP",label_format = 100)
+
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(patchwork)
+go_df <- as.data.frame(gobpsim)
+head(go_df)
+
+marker_count <- pbmc.markers %>%
+  group_by(cluster) %>%
+  summarise(
+    marker_number = n_distinct(gene),
+    .groups = "drop"
+  )
+head(marker_count)
+
+top_go <- go_df %>%
+  group_by(Cluster) %>%
+  arrange(p.adjust, pvalue, desc(Count)) %>%
+  slice(1) %>%
+  ungroup() %>%
+  mutate(
+    minus_log10_p = -log10(pvalue)
+  )
+
+plot_df <- marker_count %>%
+  mutate(cluster = as.character(cluster)) %>%
+  left_join(
+    top_go,
+    by = c("cluster" = "Cluster")
+  )
+plot_df
+
+cluster_name <- c(
+  "1"  = "stromal cell 1",
+  "2"  = "stromal cell 2",
+  "3"  = "endothelial 1",
+  "4"  = "endothelial 2",
+  "5"  = "trophoblast",
+  "6"  = "epithelial",
+  "7"  = "erythrocyte",
+  "8"  = "NK cell",
+  "9"  = "T cell",
+  "10" = "B cell",
+  "11" = "dendritic cell",
+  "12" = "macrophage",
+  "13" = "neutrophil"
+)
+plot_df$celltype <- cluster_name[as.character(plot_df$cluster)]
+
+plot_df <- plot_df %>%
+  arrange(as.numeric(cluster))
+
+plot_df$celltype <- factor(plot_df$celltype, levels = rev(plot_df$celltype))
+
+my_cols <- scales::hue_pal()(nrow(plot_df))
+names(my_cols) <- levels(plot_df$celltype)
+
+p_marker <- ggplot(plot_df, aes(x = marker_number, y = celltype)) +
+  geom_segment(
+    aes(x = 0, xend = marker_number, y = celltype, yend = celltype),
+    color = "grey80",
+    linewidth = 0.8
+  ) +
+  geom_point(
+    aes(color = celltype),
+    size = 9
+  ) +
+ scale_color_manual(
+  values = rev(
+    colorRampPalette(
+      RColorBrewer::brewer.pal(12, "Paired")
+    )(13)
+  )
+) +
+  labs(
+    title = "Cell marker numbers",
+    x = NULL,
+    y = NULL
+  ) +
+  theme_classic() +
+  theme(
+    plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+    axis.text.y = element_text(size = 18, color = "black"),
+    axis.text.x = element_text(size = 12, color = "black"),
+    axis.line.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position = "none"
+  )
+
+cell_colors <- rev(
+  colorRampPalette(
+    RColorBrewer::brewer.pal(12, "Paired")
+  )(13)
+)
+
+p_marker <- ggplot(
+  plot_df,
+  aes(x = marker_number, y = celltype)
+) +
+  geom_segment(
+    aes(
+      x = 0,
+      xend = marker_number,
+      y = celltype,
+      yend = celltype
+    ),
+    color = "grey80",
+    linewidth = 0.8
+  ) +
+  geom_point(
+    aes(color = celltype),
+    size = 9
+  ) +
+  scale_color_manual(
+    values = cell_colors
+  ) +
+  labs(
+    title = "Number of marker genes",
+    x = NULL,
+    y = NULL
+  ) +
+  theme_classic() +
+  theme(
+    plot.title = element_text(
+      size = 20,
+      face = "bold",
+      hjust = 0.5
+    ),
+    axis.text.y = element_text(
+      size = 24,
+      color = "black"
+    ),
+    axis.text.x = element_text(
+      size = 12,
+      color = "black"
+    ),
+    axis.line.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position = "none"
+  )
+
+p_go <- ggplot(
+  plot_df,
+  aes(
+    x = minus_log10_p,
+    y = celltype
+  )
+) +
+  geom_col(
+    aes(fill = celltype),
+    width = 0.55,
+    alpha = 0.65
+  ) +
+  geom_text(
+    aes(
+      x = 0.2,
+      label = Description
+    ),
+    hjust = 0,
+    size = 7,
+    color = "black"
+  ) +
+  scale_fill_manual(
+    values = cell_colors,
+    drop = FALSE
+  ) +
+  labs(
+    title = "Representative GO terms",
+    x = "-log10(Pvalue)",
+    y = NULL
+  ) +
+  theme_classic() +
+  theme(
+    plot.title = element_text(
+      size = 20,
+      face = "bold",
+      hjust = 0.5
+    ),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.text.x = element_text(
+      size = 12,
+      color = "black"
+    ),
+    legend.position = "none"
+  )
+
+options(repr.plot.width = 12, repr.plot.height = 7)
+
+p_final <- p_marker + p_go + plot_layout(widths = c(1, 1.5))
+
+p_final
+
+ggsave(
+  "Cell_marker_GO_enrichment_style.pdf",
+  p_final,
+  width = 12,
+  height = 7
+)
+
+ggsave(
+  "Cell_marker_GO_enrichment_style.png",
+  p_final,
+  width = 12,
+  height = 7,
+  dpi = 300
+)

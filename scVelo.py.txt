@@ -1,0 +1,119 @@
+# RNA velocity analysis — condensed reusable workflow
+
+# Logic:
+# 1. Convert each sample's barcode-level files into an individual loom file and merge into one combined loom file.
+# 2. Read the corresponding RDS file and convert the annotated Seurat object into an H5AD file, preserving cell metadata and dimensionality reductions.
+# 3. Match cells between the combined loom file and the H5AD file using cell barcodes, ensuring that cell identifiers are consistent.
+# 4. Run scVelo preprocessing, calculate neighbors and moments, estimate RNA velocity, and construct the velocity graph.
+# 5. Preserve the original Figure color mapping and visualize velocity on the corresponding UMAP embedding.
+
+# Other velocity use the same workflow.
+# For other datasets, replace the rds and h5ad paths,
+
+cd /home/ahmu/ZXK/LPS
+conda activate scenic-velo-cpdb 
+
+velocyto run -b   6-5LPS/6-5LPS-MZ_outs/filtered_cell_gene_matrix/barcodes.tsv.gz   -o 6.5LPS      6-5LPS/6-5LPS-MZ_outs/6-5LPS-MZ_Aligned.sort.bam    /home/soft/GRCm39.110_gencode/genes/genes.gtf  - e 6.5LPS
+
+velocyto run -b   6-5PBS/6-5PBS-MZ_outs/filtered_cell_gene_matrix/barcodes.tsv.gz   -o 6.5PBS      6-5PBS/6-5PBS-MZ_outs/6-5PBS-MZ_Aligned.sort.bam    /home/soft/GRCm39.110_gencode/genes/genes.gtf  - e 6.5PBS
+
+python
+import os
+print (os.getcwd())
+print (os.listdir())
+import loompy
+loompy.combine(['6.5LPS.loom/6.5LPS-loom', '6.5PBS.loom/6.5PBS-loom', '7.5PBS.loom/7.5PBS-loom','7.5LPS.loom/7.5LPS-loom','8.5PBS.loom/8.5PBS-loom','8.5LPS.loom/8.5LPS-loom'], "LPS-combine.loom", key="Accession")
+
+import scvelo as scv
+import scanpy as sc
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+scv.settings.verbosity = 3  # show errors(0), warnings(1), info(2), hints(3)
+scv.settings.presenter_view = True  # set max width size for presenter view
+scv.set_figure_params('scvelo')  # for beautified visualization
+scv.set_figure_params(dpi=100, fontsize=16, dpi_save=100,figsize=(4,4), frameon=False )
+import os
+os.chdir("/home/ahmu/ZXK/LPS") 
+os.getcwd() 
+
+import scanpy as sc
+import scvelo as scv
+
+adata = sc.read_h5ad("LPS-1and2-velocity.h5ad")
+adata
+
+sc.pl.scatter ( adata, color=['C6'],basis='umap',legend_loc='right',title="")
+
+adata.X[0:5,0:10].todense()
+
+x=['#C72228','#ff891c',
+    '#8EC792','#CDE088','#f7f79e','#F6BFCB','#7F6874','#666666','#989898','#1A1A1A',
+   '#635547','#DABE99','#9e6762','#FACB12','#c19f70']  
+len(x)
+sns.palplot(x)
+
+numbers=adata.obs['C6'].cat.categories
+numbers = [ int(x) for x in numbers ]
+print(numbers)
+numbers = [x - 1 for x in numbers]
+print(numbers)
+cols = [x[i] for i in numbers]
+print(cols)
+
+ sns.palplot(cols)
+
+sc.pl.scatter ( adata, color=['C6'],basis='umap',legend_loc='right',title="",palette=cols)
+
+scv.pl.scatter ( adata, color=['sample'],basis='umap',legend_loc='right',title="")
+
+scv.pl.scatter(adata, groups=[[c] for c in adata.obs['sample'].cat.categories], color='sample', ncols=6)
+
+scv.pp.filter_and_normalize(adata, min_shared_counts=20, n_top_genes=2000)
+scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
+scv.tl.velocity(adata)
+scv.tl.velocity_graph(adata,n_jobs=10)
+
+scv.pl.velocity_embedding_stream( adata, color=['C6x'],basis='umap',legend_loc='right',title="",palette=cols)
+
+cols = [
+    "#A6CEE3", "#98D277", "#F16667", "#FE982C", "#7D54A5", "#B15928"
+]
+
+samples = adata.obs["groups"].unique()
+n_samples = len(samples)
+
+ncols = 2
+nrows = (n_samples + ncols - 1) // ncols
+
+fig, axes = plt.subplots(
+    nrows,
+    ncols,
+    figsize=(12, 5 * nrows)
+)
+
+# 兼容只有一行或一个子图的情况
+axes = axes.flatten() if hasattr(axes, "flatten") else [axes]
+
+for i, s in enumerate(samples):
+    adata_sub = adata[adata.obs["groups"] == s].copy()
+
+    scv.pl.velocity_embedding_stream(
+        adata_sub,
+        basis="umap",
+        size=60,
+        color="C6x",
+        palette=cols,
+        alpha=0.5,
+        title=f"Velocity - {s}",
+        legend_loc="right",
+        ax=axes[i],
+        show=False
+    )
+
+for j in range(i + 1, len(axes)):
+    axes[j].axis("off")
+
+plt.tight_layout()
+plt.show()

@@ -1,0 +1,1479 @@
+getwd();suppressMessages(library(Seurat));library(Matrix);suppressMessages(library(dplyr));library(ggplot2);suppressMessages(library(monocle));suppressMessages(library(SeuratDisk))
+suppressMessages(library(cowplot));suppressMessages(library('pagoda2'));suppressMessages(library("velocyto.R"));suppressMessages(library("patchwork"))
+library("RColorBrewer");library(scales);library(SeuratWrappers);library(argparser);suppressMessages(library(harmony))
+suppressMessages(library(monocle3));suppressMessages(library(clusterProfiler));suppressMessages(library(org.Hs.eg.db))
+setwd("/home/ahmu/ZXK/LPS/");getwd();.libPaths()
+
+# ----------------------------
+# Figures 4A-4B
+# ----------------------------
+pbmc <- readRDS("LPS-all-13-45052.rds")
+
+Idents(pbmc)="C13"
+options(repr.plot.width=6, repr.plot.height=6)
+DimPlot(object = pbmc,label = T,label.size =8,repel=F)+  theme(axis.line=element_blank(),axis.title=element_blank(),axis.text=element_blank(),axis.ticks=element_blank(),legend.text=element_text(size=20,face="plain"),legend.key.height=unit(0.5,"inch"),text=element_text(size=20,face="plain"),strip.text=element_text(size=20))
+
+pbmc2=subset(pbmc, idents =c("1"));  pbmc2
+Idents(pbmc2)="groups"
+
+pbmc2.markers <- FindAllMarkers(object = pbmc2, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+dim(pbmc2.markers)
+
+pbmc2x <- ScaleData(pbmc2,  features = rownames(pbmc2))
+dim(pbmc2$RNA@scale.data)
+
+a=AverageExpression(pbmc2x,slot = "scale.data")$RNA
+head(a)
+
+pbmc2.markers %>% group_by(cluster) %>% top_n(n = 5,  wt = avg_log2FC) -> top5
+y=a[unique(as.character(top5$gene)),]
+dim(y)
+
+library(pheatmap);library(Seurat);library(Matrix);library(dplyr);library(ggplot2);suppressMessages(library(tidyverse));library(RColorBrewer)
+make_bold_names <- function(mat, rc_fun, rc_names) {
+  bold_names <- rc_fun(mat)
+  ids <- rc_names %>% match(rc_fun(mat))
+  ids %>%
+    walk(
+      function(i)
+        bold_names[i] <<-
+        bquote(italic(.(rc_fun(mat)[i]))) %>%
+        as.expression()
+    )
+  bold_names
+}
+
+annotation_col = data.frame(
+  Cell_Type = factor(names(table(pbmc2$groups))))
+rownames(annotation_col) =factor(names(table(pbmc2$groups)))
+head(annotation_col);dim(annotation_col)
+
+options(repr.plot.width=16, repr.plot.height=3)
+x=c('#635547','#DABE99','#9e6762','#FACB12','#c19f70','#0F4A9C','#F397C0','#EF5A9D','#C594BF','#DFCDE4',
+    '#139992','#3F84AA','#8DB5CE','#005579','#C9EBFB','#B51D8D','#532C8A','#8870ad','#cc7818','#FBBE92',
+    '#f9decf','#c9a997','#354E25','#f79083','#EF4E22','#C3C388','#647a4f','#65A83E','#C72228','#ff891c',
+    '#8EC792','#CDE088','#f7f79e','#F6BFCB','#7F6874','#666666','#989898','#1A1A1A')  
+length(x)
+barplot(rep(2,38),col=x)
+
+fdf=pbmc2.markers[,c(6,7)]
+sdf = split(fdf, list(fdf$cluster))
+y=NULL
+for (i in as.character(unique(fdf$cluster))) {
+  y[[i]] <- bitr(sdf[[i]]$gene, fromType = "SYMBOL", toType = "ENTREZID", OrgDb ="org.Mm.eg.db")$ENTREZID
+}
+str(y)
+
+gobp <- compareCluster(geneCluster = y, fun = "enrichGO",
+                       OrgDb = "org.Mm.eg.db",keyType = 'ENTREZID',readable =T,
+                       ont = "BP",  minGSSize = 2, maxGSSize = 2000,
+                       pAdjustMethod = "BH",
+                       pvalueCutoff = 0.0001)   
+dim(gobp)
+
+gobpsim <- clusterProfiler::simplify(gobp, cutoff=0.7, by="p.adjust", select_fun=min, measure = "Wang", semData = NULL); dim(gobpsim)
+
+options(repr.plot.width=24, repr.plot.height=20)
+dotplot(gobpsim, font.size=15, showCategory=20,title="GO-BP",label_format = 100)
+
+term_keep_SC1 <- c(
+  "aerobic respiration",
+  "mitochondrion organization",
+  "RNA processing",
+
+  "cell migration",
+  "regulation of cell migration",
+  "regulation of locomotion",
+  "tube development",
+  "circulatory system development"
+)
+
+go_df <- as.data.frame(gobpsim)
+go_fig4 <- go_df %>%
+  filter(Description %in% term_keep_SC1)
+
+go_fig4 <- go_fig4 %>%
+  mutate(
+    GeneRatio_num = sapply(
+      GeneRatio,
+      function(x) {
+        xx <- as.numeric(strsplit(x, "/")[[1]])
+        xx[1] / xx[2]
+      }
+    )
+  )
+
+go_fig4 <- go_fig4 %>%
+  mutate(
+    direction = ifelse(
+      Cluster == "PBS",
+      "PBS",
+      "LPS"
+    ),
+    ratio_signed = ifelse(
+      direction == "PBS",
+      -GeneRatio_num,
+      GeneRatio_num
+    ),
+    logFDR = -log10(p.adjust)
+  )
+
+options(repr.plot.width=12, repr.plot.height=5)
+term_keep_SC1 <- c(
+  "aerobic respiration",
+  "mitochondrion organization",
+  "RNA processing",
+
+  "cell migration",
+  "regulation of cell migration",
+  "regulation of locomotion",
+  "tube development",
+  "circulatory system development"
+)
+
+go_fig4$Description <- factor(
+  go_fig4$Description,
+  levels = rev(term_keep_SC1)
+)
+
+p_go_fig4 <- ggplot(
+  go_fig4,
+  aes(
+    x = ratio_signed,
+    y = Description
+  )
+) +
+
+  geom_vline(
+    xintercept = 0,
+    linewidth = 0.8
+  ) +
+
+  geom_point(
+    aes(
+      size = GeneRatio_num,
+      fill = logFDR
+    ),
+    shape = 21,
+    color = "black",
+    stroke = 0.3
+  ) +
+
+  scale_x_continuous(
+    labels = function(x) abs(x),
+    expand = expansion(mult = c(0.12, 0.12))
+  ) +
+
+  scale_size_continuous(
+    name = "GeneRatio",
+    range = c(4, 11)
+  ) +
+
+  scale_fill_gradientn(
+    colours = c("#1C9AD6", "white", "#F46D00"),
+    name = expression(-log[10](FDR))
+  ) +
+
+  labs(
+    x = "GeneRatio",
+    y = NULL
+  ) +
+
+  annotate(
+    "text",
+    x = -Inf,
+    y = Inf,
+    label = "PBS",
+    hjust = -0.3,
+    vjust = 1.5,
+    size = 6,
+    fontface = "bold"
+  ) +
+  annotate(
+    "text",
+    x = Inf,
+    y = Inf,
+    label = "LPS",
+    hjust = 1.3,
+    vjust = 1.5,
+    size = 6,
+    fontface = "bold"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text.y = element_text(
+      size = 22,
+      color = "black"
+    ),
+    axis.text.x = element_text(
+      size = 20,
+      color = "black"
+    ),
+    axis.title.x = element_text(
+      size = 20
+    ),
+    axis.ticks.y = element_blank(),
+    legend.title = element_text(
+      size = 20
+    ),
+    legend.text = element_text(
+      size = 10
+    ),
+    plot.margin = margin(
+      10, 20, 10, 10
+    )
+  )
+
+p_go_fig4
+
+
+pbmc1=subset(pbmc, idents =c("2"));  pbmc1
+Idents(pbmc1)="groups"
+
+pbmc1.markers <- FindAllMarkers(object = pbmc1, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+dim(pbmc1.markers)
+
+pbmc1x <- ScaleData(pbmc1,  features = rownames(pbmc1))
+
+a=AverageExpression(pbmc1x,slot = "scale.data")$RNA
+head(a)
+
+pbmc1.markers %>% group_by(cluster) %>% top_n(n = 5,  wt = avg_log2FC) -> top5
+y=a[unique(as.character(top5$gene)),]
+dim(y)
+
+library(pheatmap);library(Seurat);library(Matrix);library(dplyr);library(ggplot2);suppressMessages(library(tidyverse));library(RColorBrewer)
+make_bold_names <- function(mat, rc_fun, rc_names) {
+  bold_names <- rc_fun(mat)
+  ids <- rc_names %>% match(rc_fun(mat))
+  ids %>%
+    walk(
+      function(i)
+        bold_names[i] <<-
+        bquote(italic(.(rc_fun(mat)[i]))) %>%
+        as.expression()
+    )
+  bold_names
+}
+
+annotation_col = data.frame(
+  Cell_Type = factor(names(table(pbmc1$groups))))
+rownames(annotation_col) =factor(names(table(pbmc1$groups)))
+head(annotation_col);dim(annotation_col)
+
+Cell_Type=cbind(rownames(table(pbmc$C13)),x[as.numeric(names(table(pbmc$C13)))])
+rownames(Cell_Type)=Cell_Type[,1];Cell_Type=Cell_Type[,2]
+head(Cell_Type)
+ann_colors = list(Cell_Type=Cell_Type); head(ann_colors)
+
+fdf=pbmc1.markers[,c(6,7)]
+sdf = split(fdf, list(fdf$cluster))
+y=NULL
+for (i in as.character(unique(fdf$cluster))) {
+  y[[i]] <- bitr(sdf[[i]]$gene, fromType = "SYMBOL", toType = "ENTREZID", OrgDb ="org.Mm.eg.db")$ENTREZID
+}
+str(y)
+
+gobp <- compareCluster(geneCluster = y, fun = "enrichGO",
+                       OrgDb = "org.Mm.eg.db",keyType = 'ENTREZID',readable =T,
+                       ont = "BP",  minGSSize = 2, maxGSSize = 2000,
+                       pAdjustMethod = "BH",
+                       pvalueCutoff = 0.0001)   
+dim(gobp)
+
+gobpsim <- clusterProfiler::simplify(gobp, cutoff=0.7, by="p.adjust", select_fun=min, measure = "Wang", semData = NULL); dim(gobpsim)
+
+options(repr.plot.width=20, repr.plot.height=10)
+dotplot(gobpsim, font.size=15, showCategory=20,title="GO-BP",label_format = 50)
+
+term_keep <- c(
+  "regulation of cell motility",
+  "cell migration",
+  "cell adhesion",
+  "actin filament-based process",
+  "circulatory system development",
+
+  "defense response",
+  "response to biotic stimulus",
+  "response to cytokine",
+  "regulation of immune response",
+  "regulation of cell migration"
+)
+
+go_df <- as.data.frame(gobpsim)
+go_fig4 <- go_df %>%
+  filter(Description %in% term_keep)
+
+go_fig4 <- go_fig4 %>%
+  mutate(
+    GeneRatio_num = sapply(
+      GeneRatio,
+      function(x) {
+        xx <- as.numeric(strsplit(x, "/")[[1]])
+        xx[1] / xx[2]
+      }
+    )
+  )
+
+go_fig4 <- go_fig4 %>%
+  mutate(
+    direction = ifelse(
+      Cluster == "PBS",
+      "PBS",
+      "LPS"
+    ),
+
+    ratio_signed = ifelse(
+      direction == "PBS",
+      -GeneRatio_num,
+      GeneRatio_num
+    ),
+
+    logFDR = -log10(p.adjust)
+  )
+
+options(repr.plot.width=12, repr.plot.height=5)
+term_order <- c(
+  "circulatory system development",
+  "actin filament-based process",
+  "cell adhesion",
+  "cell migration",
+  "regulation of cell motility",
+
+  "defense response",
+  "response to biotic stimulus",
+  "response to cytokine",
+  "regulation of immune response",
+  "regulation of cell migration"
+)
+
+go_fig4$Description <- factor(
+  go_fig4$Description,
+  levels = rev(term_order)
+)
+
+p_go_fig4 <- ggplot(
+  go_fig4,
+  aes(
+    x = ratio_signed,
+    y = Description
+  )
+) +
+
+  geom_vline(
+    xintercept = 0,
+    linewidth = 0.8
+  ) +
+
+  geom_point(
+    aes(
+      size = GeneRatio_num,
+      fill = logFDR
+    ),
+    shape = 21,
+    color = "black",
+    stroke = 0.3
+  ) +
+
+  scale_x_continuous(
+    labels = function(x) abs(x),
+    expand = expansion(mult = c(0.12, 0.12))
+  ) +
+
+  scale_size_continuous(
+    name = "GeneRatio",
+    range = c(4, 11)
+  ) +
+
+  scale_fill_gradientn(
+    colours = c("#1C9AD6", "white", "#F46D00"),
+    name = expression(-log[10](FDR))
+  ) +
+
+  labs(
+    x = "GeneRatio",
+    y = NULL
+  ) +
+
+  annotate(
+    "text",
+    x = -Inf,
+    y = Inf,
+    label = "PBS",
+    hjust = -0.3,
+    vjust = 1.5,
+    size = 6,
+    fontface = "bold"
+  ) +
+
+  annotate(
+    "text",
+    x = Inf,
+    y = Inf,
+    label = "LPS",
+    hjust = 1.3,
+    vjust = 1.5,
+    size = 6,
+    fontface = "bold"
+  ) +
+
+  theme_classic() +
+
+  theme(
+    axis.text.y = element_text(
+      size = 22,
+      color = "black"
+    ),
+
+    axis.text.x = element_text(
+      size = 20,
+      color = "black"
+    ),
+
+    axis.title.x = element_text(
+      size = 20
+    ),
+
+    axis.ticks.y = element_blank(),
+
+    legend.title = element_text(
+      size = 20
+    ),
+
+    legend.text = element_text(
+      size = 10
+    ),
+
+    plot.margin = margin(
+      10, 20, 10, 10
+    )
+  )
+
+p_go_fig4
+
+
+# ----------------------------
+# Figure 4C
+# ----------------------------
+Idents(pbmc)="groups"
+pbmc3=subset(pbmc, idents =c("LPS"));  pbmc3
+pbmc4=subset(pbmc3, idents =c("1","2","8","9","10","11","12","13"));  pbmc4$C8=Idents(pbmc4)
+
+library('homologene')
+transformHomoloGene <- function(exp_sc_mat, inTaxID = 10090, outTaxID = 9606) {
+    library(homologene)
+    genes.in <- rownames(exp_sc_mat)
+    res.home <- homologene(genes.in, inTax = inTaxID, outTax = outTaxID)
+    res.home <- res.home[!duplicated(res.home[, 1]),]
+    res.home <- res.home[!duplicated(res.home[, 2]),]
+    genes.out <- res.home[, 1]
+    genes.homo <- res.home[, 2]
+    exp.out <- exp_sc_mat[genes.out,]
+    rownames(exp.out) <- genes.homo
+    return(exp.out)
+}
+
+pbmc4
+count=transformHomoloGene(pbmc4$RNA@counts)
+dim(count)
+
+pbmc4 <- CreateSeuratObject(count, meta.data = pbmc4@meta.data, min.cells = 3 );pbmc4
+
+saveRDS(pbmc4, file = "LPS-8-16047-Hu.rds")
+
+# ----------------------------
+# Switch to python
+# ----------------------------
+
+import pandas as pd
+import sys
+import os
+pd.set_option('display.max_columns', 100)
+os.chdir('/home/ahmu/ZXK/LPS/')
+import anndata2ri
+from rpy2.robjects import r
+from rpy2.robjects.conversion import localconverter
+anndata2ri.activate()
+r('.libPaths()')
+
+r('library(Seurat);library(Matrix)')
+r('pbmc=readRDS("LPS-8-16047-Hu.rds");Idents(pbmc) = pbmc$C8')
+r("DEGs = FindAllMarkers(pbmc, test.use = 'LR', verbose = F, only.pos = T, random.seed = 1,  logfc.threshold = 0.2, min.pct =0.1,return.thresh = 0.05)")
+
+r("fDEGs = subset(DEGs, p_val_adj < 0.05 & avg_log2FC > 0.1); fDEGs = fDEGs[, c('cluster', 'gene', 'p_val_adj', 'p_val', 'avg_log2FC', 'pct.1', 'pct.2')]") 
+r("write.table(fDEGs, file ='LPS-8-16047-Hu-DEGs-C8.tsv', sep = '\t', quote = F, row.names = F)")
+
+! mkdir LPS-8-16047-Hu-mtx
+
+r('library(Seurat);library(Matrix)')
+r("writeMM(pbmc@assays$RNA@data, file = 'LPS-8-16047-Hu-mtx/matrix.mtx')") 
+r("write(rownames(pbmc@assays$RNA@data), file = 'LPS-8-16047-Hu-mtx/features.tsv')") 
+r("write(colnames(pbmc@assays$RNA@data), file = 'LPS-8-16047-Hu-mtx/barcodes.tsv')") 
+
+r("pbmc@meta.data$Cell = rownames(pbmc@meta.data);df = pbmc@meta.data[, c('Cell', 'C8')]") 
+r("write.table(df, file ='LPS-8-16047-Hu-meta-C8.tsv', sep = '\t', quote = F, row.names = F)") 
+
+import pandas as pd
+import sys
+import os
+pd.set_option('display.max_columns', 100)
+os.chdir('/home/ahmu/ZXK/LPS/')
+import anndata2ri
+from rpy2.robjects import r
+from rpy2.robjects.conversion import localconverter
+anndata2ri.activate()
+print(sys.version)
+
+cpdb_file_path = '/home/soft/cpdb/v5.0.0/cellphonedb.zip'
+meta_file_path = 'LPS-8-16047-Hu-meta-C8.tsv'
+counts_file_path = 'LPS-8-16047-Hu-mtx'
+degs_file_path = 'LPS-8-16047-Hu-DEGs-C8.tsv'
+out_path = 'LPS-8-16047-Hu-cpdb'
+
+from cellphonedb.src.core.methods import cpdb_degs_analysis_method
+
+cpdb_results = cpdb_degs_analysis_method.call(
+    cpdb_file_path = cpdb_file_path,                            
+    meta_file_path = meta_file_path,                            
+    counts_file_path = counts_file_path,                        
+    degs_file_path = degs_file_path,                            
+    counts_data = 'hgnc_symbol',                               
+    score_interactions = True,                                 
+    threshold = 0.1,                                           
+    result_precision = 3,                                      
+    separator = '|',                                           
+    debug = False,                                            
+    output_path = out_path,                                    
+    output_suffix = None,                                     
+    threads = 30
+    )
+
+cpdb_results['relevant_interactions'].head(2)
+
+cpdb_results['significant_means'].head(2)
+
+cpdb_results['means'].head(2)
+
+cpdb_results['deconvoluted'].head(2)
+
+cpdb_results['interaction_scores'].head(2)
+
+search_results = search_utils.search_analysis_results(
+    query_cell_types_1 = ['13' ],  
+    query_cell_types_2 = [ "1","2",'8',"9","10","11","12"],    
+    query_genes = ['TGFBR1'],                                       
+    query_interactions = ['CSF1_CSF1R'],                          
+    significant_means = cpdb_results['significant_means'],        
+    deconvoluted = cpdb_results['deconvoluted'],                 
+    separator = '|',                                               
+    long_format = True,                                             
+    query_classifications = ['Signaling by Transforming growth factor']
+)
+
+search_results.head(3)
+
+annotation = list(cpdb_results['relevant_interactions'].columns[:13])
+interaction = list(cpdb_results['relevant_interactions'].columns[13:])
+
+relevant_interactions_long = pd.melt(cpdb_results['relevant_interactions'],
+                                     id_vars = annotation,
+                                     var_name = 'Interacting_cell',
+                                     value_vars = interaction,
+                                     value_name = 'Relevance')
+
+relevant_interactions_long[['Cell_a', 'Cell_b']] = relevant_interactions_long['Interacting_cell'] \
+    .str.split('|', expand = True) \
+    .rename(columns={0 : 'Cell_a', 1: 'Cell_b'})
+
+relevant_interactions_long.head(3)
+
+means_long = pd.melt(cpdb_results['means'],
+                     id_vars = annotation,
+                     var_name = 'Interacting_cell',
+                     value_vars = interaction,
+                     value_name = 'Mean')
+
+means_long.head(3)
+
+id_cp_dict = relevant_interactions_long.groupby('id_cp_interaction')['Relevance'] \
+    .sum() \
+    .to_dict()
+
+relevant_interactions_long['Recurrence'] = relevant_interactions_long['id_cp_interaction'] \
+    .map(id_cp_dict)
+
+relevant_interactions_long = relevant_interactions_long.sort_values(['Recurrence'],
+                                                                    ascending = True)
+
+relevant_interactions_long.head(3)
+
+relevant_interactions_plot =relevant_interactions_long
+
+from scipy.stats import zscore
+
+relevant_interactions_plot = relevant_interactions_plot.merge(means_long[['id_cp_interaction', 'Interacting_cell', 'Mean']],
+                                                              on = ['id_cp_interaction', 'Interacting_cell'],
+                                                              how = 'inner')
+
+relevant_interactions_plot['Mean_scaled'] = relevant_interactions_plot.groupby('id_cp_interaction', group_keys = False)['Mean'].transform(lambda x : zscore(x, ddof = 1))
+relevant_interactions_plot = relevant_interactions_plot.sort_values('Interacting_cell')
+
+relevant_interactions_plot.head(3)
+
+import seaborn as sns
+
+g = sns.relplot(
+    data = relevant_interactions_plot,
+    x = "Interacting_cell",
+    y = "interacting_pair",
+    hue = "Relevance",
+    size = "Mean_scaled",
+    palette = "vlag",
+    hue_norm=(-1, 1),
+    height = 60,
+    aspect = 0.4,
+    sizes = (0, 200)
+)
+g.set_xticklabels(rotation = 90)
+
+import itertools
+list1 = ['13']
+list2 = [ "1","2",'8',"9","10","11","12"]
+interact_rm1 = [ '|'.join(i) for i in itertools.product(list1, repeat = 2) ]
+interact_rm2 = [ '|'.join(i) for i in itertools.product(list2, repeat = 2) ]
+interact_rm=list(set(interact_rm1) | set(interact_rm2))
+idx_keep = [ i not in interact_rm for i in relevant_interactions_plot['Interacting_cell'] ]
+relevant_interactions_plot = relevant_interactions_plot[idx_keep]
+
+import seaborn as sns
+
+g = sns.relplot(
+    data = relevant_interactions_plot,
+    x = "Interacting_cell",
+    y = "interacting_pair",
+    hue = "Relevance",
+    size = "Mean_scaled",
+    palette = "vlag",
+    hue_norm=(-1, 1),
+    height = 70,
+    aspect = 0.4,
+    sizes = (0, 200)
+)
+g.set_xticklabels(rotation = 90)
+
+interactions_to_plot = [    "CXCL3_CXCR2",
+    "CXCL6_CXCR2",
+    "LeukotrieneB4_byLTA4H_LTB4R",
+    "ANXA1_FPR1",
+    "ICAM1_integrin_aMb2_complex",
+     "SELPLG_SELL",
+    "CXCL12_CXCR4"]
+idx = [ id in interactions_to_plot for id in relevant_interactions_long['interacting_pair'] ]
+relevant_interactions_plot = relevant_interactions_long[idx].copy()
+relevant_interactions_plot
+
+from scipy.stats import zscore
+relevant_interactions_plot = relevant_interactions_plot.merge(means_long[['id_cp_interaction', 'Interacting_cell', 'Mean']],
+                                                              on = ['id_cp_interaction', 'Interacting_cell'],
+                                                              how = 'inner')
+
+relevant_interactions_plot['Mean_scaled'] = relevant_interactions_plot.groupby('id_cp_interaction', group_keys = False)['Mean'].transform(lambda x : zscore(x, ddof = 1))
+relevant_interactions_plot = relevant_interactions_plot.sort_values('Interacting_cell')
+
+relevant_interactions_plot.head(5)
+
+import seaborn as sns
+
+g = sns.relplot(
+    data = relevant_interactions_plot,
+    x = "Interacting_cell",
+    y = "interacting_pair",
+    hue = "Relevance",
+    size = "Mean_scaled",
+    palette = "vlag",
+    hue_norm=(-1, 1),
+    height = 18,
+    aspect = 0.8,
+    sizes = (0, 200)
+)
+g.set_xticklabels(rotation = 90)
+
+import itertools
+list1 = ['13']
+list2 = ["1", "2",'8',"9","10","11","12"]
+interact_rm1 = [ '|'.join(i) for i in itertools.product(list1, repeat = 2) ]
+interact_rm2 = [ '|'.join(i) for i in itertools.product(list2, repeat = 2) ]
+interact_rm=list(set(interact_rm1) | set(interact_rm2))
+idx_keep = [ i not in interact_rm for i in relevant_interactions_plot['Interacting_cell'] ]
+relevant_interactions_plot = relevant_interactions_plot[idx_keep]
+
+import seaborn as sns
+
+g = sns.relplot(
+    data = relevant_interactions_plot,
+    x = "Interacting_cell",
+    y = "interacting_pair",
+    hue = "Relevance",
+    size = "Mean_scaled",
+    palette = "vlag",
+    hue_norm=(-1, 1),
+    height = 6,
+    aspect = 1.6,
+    sizes = (0, 200)
+)
+g.set_xticklabels(rotation = 90)
+
+import pandas as pd
+import seaborn as sns
+
+pair_order = [
+    "CXCL3_CXCR2",
+    "CXCL6_CXCR2",
+    "LeukotrieneB4_byLTA4H_LTB4R",
+    "ANXA1_FPR1",
+    "ICAM1_integrin_aMb2_complex",
+     "SELPLG_SELL",
+    "CXCL12_CXCR4"
+]
+
+relevant_interactions_plot["interacting_pair"] = pd.Categorical(
+    relevant_interactions_plot["interacting_pair"],
+    categories=pair_order,
+    ordered=True
+)
+
+g = sns.relplot(
+    data=relevant_interactions_plot,
+    x="Interacting_cell",
+    y="interacting_pair",
+    hue="Relevance",
+    size="Mean_scaled",
+    palette="vlag",
+    hue_norm=(-1, 1),
+    height=6,
+    aspect=1.6,
+    sizes=(0, 200)
+)
+
+g.set_xticklabels(rotation=90)
+
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+x_order = [
+     "1|13","2|13","8|13","9|13",
+    "10|13","11|13","12|13","13|1","13|2","13|8","12|9",
+    "13|10","13|11",
+    "13|12"
+]
+
+cell_map = {
+    "1": "SC1",
+    "2": "SC2",
+    "8": "NK",
+    "9": "T",
+    "10": "B",
+    "11": "DC",
+    "12": "Mac",
+    "13": "Neu"
+}
+
+def convert_pair(pair):
+    a, b = pair.split("|")
+    return f"{cell_map.get(a, a)}|{cell_map.get(b, b)}"
+
+relevant_interactions_plot["Interacting_cell_label"] = (
+    relevant_interactions_plot["Interacting_cell"].apply(convert_pair)
+)
+
+x_order_label = [convert_pair(x) for x in x_order]
+
+relevant_interactions_plot["Interacting_cell_label"] = pd.Categorical(
+    relevant_interactions_plot["Interacting_cell_label"],
+    categories=x_order_label,
+    ordered=True
+)
+
+relevant_interactions_plot = relevant_interactions_plot.sort_values("Interacting_cell_label")
+
+g = sns.relplot(
+    data=relevant_interactions_plot,
+    x="Interacting_cell_label",
+    y="interacting_pair",
+    hue="Relevance",
+    size="Mean_scaled",
+    palette="vlag",
+    hue_norm=(-1, 1),
+    height=3,
+    aspect=3.2,      
+    sizes=(0, 200)
+)
+g.ax.tick_params(axis='y', labelsize=10)
+g.ax.tick_params(axis='x', labelsize=10)
+g.set_xticklabels(rotation=45, ha="right")
+
+g.fig.subplots_adjust(right=0.78)
+
+g.set_axis_labels(
+    "Interacting_cell_label",
+    ""
+)
+sns.move_legend(
+    g,
+    loc="center left",
+    bbox_to_anchor=(0.77, 0.5),
+    frameon=False,
+    title=None
+)
+
+plt.show()
+
+g.set_xticklabels(rotation=45, ha="right")
+plt.tight_layout()
+plt.show()
+
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import numpy as np
+
+from matplotlib.lines import Line2D
+from matplotlib.colors import Normalize
+
+g = sns.relplot(
+    data=relevant_interactions_plot,
+    x="Interacting_cell_label",
+    y="interacting_pair",
+    hue="Relevance",
+    size="Mean_scaled",
+
+    palette="vlag",
+    hue_norm=(-1, 1),
+
+    size_norm=(-1, 3),
+    sizes=(8, 100),
+
+    height=3,
+    aspect=3.6,
+
+    # 关闭自动 legend
+    legend=False
+)
+
+g.ax.tick_params(
+    axis="y",
+    labelsize=10
+)
+
+g.ax.tick_params(
+    axis="x",
+    labelsize=10
+)
+
+g.set_xticklabels(
+    rotation=45,
+    ha="right"
+)
+
+g.set_axis_labels(
+    "Interacting_cell_label",
+    ""
+)
+
+cmap = sns.color_palette(
+    "vlag",
+    as_cmap=True
+)
+
+norm = Normalize(
+    vmin=-1,
+    vmax=1
+)
+
+relevance_values = [0, 1]
+
+relevance_handles = [
+    Line2D(
+        [0],
+        [0],
+        marker="o",
+        linestyle="",
+        markerfacecolor=cmap(norm(v)),
+        markeredgecolor="none",
+
+        markersize=5,
+
+        label=str(v)
+    )
+    for v in relevance_values
+]
+
+legend1 = g.ax.legend(
+    handles=relevance_handles,
+    title="Relevance",
+
+    loc="upper left",
+    bbox_to_anchor=(1.02, 1.00),
+
+    frameon=False,
+
+    handletextpad=1.0,
+    labelspacing=0.55,
+    borderaxespad=0,
+
+    fontsize=10,
+    title_fontsize=11
+)
+
+g.ax.add_artist(legend1)
+
+size_values = [-1, 0, 1, 2, 3]
+
+size_areas = np.interp(
+    size_values,
+    [-1, 3],
+    [8, 100]
+)
+
+size_handles = [
+    Line2D(
+        [0],
+        [0],
+        marker="o",
+        linestyle="",
+
+        markerfacecolor="#333333",
+        markeredgecolor="#333333",
+        markersize=np.sqrt(s),
+
+        label=str(v)
+    )
+    for v, s in zip(size_values, size_areas)
+]
+
+legend2 = g.ax.legend(
+    handles=size_handles,
+    title="Mean_scaled",
+    loc="upper left",
+    bbox_to_anchor=(1.02, 0.62),
+
+    frameon=False,
+
+    handletextpad=1.0,
+    labelspacing=0.70,
+    borderaxespad=0,
+
+    fontsize=10,
+    title_fontsize=11
+)
+
+g.fig.subplots_adjust(
+    right=0.80,
+    bottom=0.28
+)
+
+plt.show()
+
+
+# ----------------------------
+# Figure 4D
+# ----------------------------
+pbmc3=subset(pbmc, idents =c("PBS"));  pbmc3
+pbmc4=subset(pbmc3, idents =c("1","2","8","9","10","11","12","13"));  pbmc4$C8=Idents(pbmc4)
+
+library('homologene')
+transformHomoloGene <- function(exp_sc_mat, inTaxID = 10090, outTaxID = 9606) {
+    library(homologene)
+    genes.in <- rownames(exp_sc_mat)
+    res.home <- homologene(genes.in, inTax = inTaxID, outTax = outTaxID)
+    res.home <- res.home[!duplicated(res.home[, 1]),]
+    res.home <- res.home[!duplicated(res.home[, 2]),]
+    genes.out <- res.home[, 1]
+    genes.homo <- res.home[, 2]
+    exp.out <- exp_sc_mat[genes.out,]
+    rownames(exp.out) <- genes.homo
+    return(exp.out)
+}
+
+pbmc4
+count=transformHomoloGene(pbmc4$RNA@counts)
+dim(count)
+
+pbmc4 <- CreateSeuratObject(count, meta.data = pbmc4@meta.data, min.cells = 3 );pbmc4
+
+saveRDS(pbmc4, file = "PBS-8-17236-Hu.rds")
+# ----------------------------
+# Switch to python
+# ----------------------------
+import pandas as pd
+import sys
+import os
+pd.set_option('display.max_columns', 100)
+os.chdir('/home/ahmu/ZXK/LPS/')
+import anndata2ri
+from rpy2.robjects import r
+from rpy2.robjects.conversion import localconverter
+anndata2ri.activate()
+r('.libPaths()')
+
+r('library(Seurat);library(Matrix)')
+r('pbmc=readRDS("PBS-8-17236-Hu.rds");Idents(pbmc) = pbmc$C8')
+r("DEGs = FindAllMarkers(pbmc, test.use = 'LR', verbose = F, only.pos = T, random.seed = 1,  logfc.threshold = 0.2, min.pct =0.1,return.thresh = 0.05)")
+
+r("fDEGs = subset(DEGs, p_val_adj < 0.05 & avg_log2FC > 0.1); fDEGs = fDEGs[, c('cluster', 'gene', 'p_val_adj', 'p_val', 'avg_log2FC', 'pct.1', 'pct.2')]") 
+r("write.table(fDEGs, file ='PBS-8-17236-Hu-DEGs-C13.tsv', sep = '\t', quote = F, row.names = F)")
+
+! mkdir PBS-8-17236-Hu-mtx
+
+r('library(Seurat);library(Matrix)')
+
+r("writeMM(pbmc@assays$RNA@data, file = 'PBS-8-17236-Hu-mtx/matrix.mtx')") 
+r("write(rownames(pbmc@assays$RNA@data), file = 'PBS-8-17236-Hu-mtx/features.tsv')") 
+r("write(colnames(pbmc@assays$RNA@data), file = 'PBS-8-17236-Hu-mtx/barcodes.tsv')") 
+
+r("pbmc@meta.data$Cell = rownames(pbmc@meta.data);df = pbmc@meta.data[, c('Cell', 'C8')]") 
+r("write.table(df, file ='PBS-8-17236-Hu-meta-C13.tsv', sep = '\t', quote = F, row.names = F)") 
+
+import pandas as pd
+import sys
+import os
+pd.set_option('display.max_columns', 100)
+os.chdir('/home/ahmu/ZXK/LPS/')
+import anndata2ri
+from rpy2.robjects import r
+from rpy2.robjects.conversion import localconverter
+anndata2ri.activate()
+print(sys.version)
+
+cpdb_file_path = '/home/soft/cpdb/v5.0.0/cellphonedb.zip'
+meta_file_path = 'PBS-8-17236-Hu-meta-C13.tsv'
+counts_file_path = 'PBS-8-17236-Hu-mtx'
+degs_file_path = 'PBS-8-17236-Hu-DEGs-C13.tsv'
+out_path = 'PBS-8-17236-Hu-cpdb'
+
+from cellphonedb.src.core.methods import cpdb_degs_analysis_method
+
+cpdb_results = cpdb_degs_analysis_method.call(
+    cpdb_file_path = cpdb_file_path,                            
+    meta_file_path = meta_file_path,                            
+    counts_file_path = counts_file_path,                        
+    degs_file_path = degs_file_path,                            
+    counts_data = 'hgnc_symbol',                               
+    score_interactions = True,                                 
+    threshold = 0.1,                                           
+    result_precision = 3,                                      
+    separator = '|',                                           
+    debug = False,                                            
+    output_path = out_path,                                    
+    output_suffix = None,                                     
+    threads = 30
+    )
+
+cpdb_results['relevant_interactions'].head(2)
+
+cpdb_results['significant_means'].head(2)
+
+cpdb_results['means'].head(2)
+
+cpdb_results['deconvoluted'].head(2)
+
+cpdb_results['interaction_scores'].head(2)
+
+from cellphonedb.utils import search_utils
+
+search_results = search_utils.search_analysis_results(
+    query_cell_types_1 = ['13' ],  
+    query_cell_types_2 = [ "1","2",'8',"9","10","11","12"],    
+    query_genes = ['TGFBR1'],                                       
+    query_interactions = ['CSF1_CSF1R'],                          
+    significant_means = cpdb_results['significant_means'],        
+    deconvoluted = cpdb_results['deconvoluted'],                 
+    separator = '|',                                               
+    long_format = True,                                             
+    query_classifications = ['Signaling by Transforming growth factor']
+)
+
+search_results.head(3)
+
+annotation = list(cpdb_results['relevant_interactions'].columns[:13])
+interaction = list(cpdb_results['relevant_interactions'].columns[13:])
+
+relevant_interactions_long = pd.melt(cpdb_results['relevant_interactions'],
+                                     id_vars = annotation,
+                                     var_name = 'Interacting_cell',
+                                     value_vars = interaction,
+                                     value_name = 'Relevance')
+
+relevant_interactions_long[['Cell_a', 'Cell_b']] = relevant_interactions_long['Interacting_cell'] \
+    .str.split('|', expand = True) \
+    .rename(columns={0 : 'Cell_a', 1: 'Cell_b'})
+
+relevant_interactions_long.head(3)
+
+means_long = pd.melt(cpdb_results['means'],
+                     id_vars = annotation,
+                     var_name = 'Interacting_cell',
+                     value_vars = interaction,
+                     value_name = 'Mean')
+
+means_long.head(3)
+
+id_cp_dict = relevant_interactions_long.groupby('id_cp_interaction')['Relevance'] \
+    .sum() \
+    .to_dict()
+
+relevant_interactions_long['Recurrence'] = relevant_interactions_long['id_cp_interaction'] \
+    .map(id_cp_dict)
+
+relevant_interactions_long = relevant_interactions_long.sort_values(['Recurrence'],
+                                                                    ascending = True)
+
+relevant_interactions_long.head(3)
+
+relevant_interactions_plot =relevant_interactions_long
+from scipy.stats import zscore
+relevant_interactions_plot = relevant_interactions_plot.merge(means_long[['id_cp_interaction', 'Interacting_cell', 'Mean']],
+                                                              on = ['id_cp_interaction', 'Interacting_cell'],
+                                                              how = 'inner')
+
+relevant_interactions_plot['Mean_scaled'] = relevant_interactions_plot.groupby('id_cp_interaction', group_keys = False)['Mean'].transform(lambda x : zscore(x, ddof = 1))
+relevant_interactions_plot = relevant_interactions_plot.sort_values('Interacting_cell')
+
+relevant_interactions_plot.head(3)
+
+import seaborn as sns
+
+g = sns.relplot(
+    data = relevant_interactions_plot,
+    x = "Interacting_cell",
+    y = "interacting_pair",
+    hue = "Relevance",
+    size = "Mean_scaled",
+    palette = "vlag",
+    hue_norm=(-1, 1),
+    height = 60,
+    aspect = 0.4,
+    sizes = (0, 200)
+)
+g.set_xticklabels(rotation = 90)
+
+import itertools
+list1 = ["13"]
+list2 = [ '1',"2", '8',"9","10","11","12"]
+interact_rm1 = [ '|'.join(i) for i in itertools.product(list1, repeat = 2) ]
+interact_rm2 = [ '|'.join(i) for i in itertools.product(list2, repeat = 2) ]
+interact_rm=list(set(interact_rm1) | set(interact_rm2))
+idx_keep = [ i not in interact_rm for i in relevant_interactions_plot['Interacting_cell'] ]
+relevant_interactions_plot = relevant_interactions_plot[idx_keep]
+
+import seaborn as sns
+
+g = sns.relplot(
+    data = relevant_interactions_plot,
+    x = "Interacting_cell",
+    y = "interacting_pair",
+    hue = "Relevance",
+    size = "Mean_scaled",
+    palette = "vlag",
+    hue_norm=(-1, 1),
+    height = 60,
+    aspect = 0.23,
+    sizes = (0, 200)
+)
+g.set_xticklabels(rotation = 90)
+
+import seaborn as sns
+
+g = sns.relplot(
+    data = relevant_interactions_plot,
+    x = "Interacting_cell",
+    y = "interacting_pair",
+    hue = "Relevance",
+    size = "Mean_scaled",
+    palette = "vlag",
+    hue_norm=(-1, 1),
+    height = 60,
+    aspect = 0.23,
+    sizes = (0, 200)
+)
+g.set_xticklabels(rotation = 90)
+
+interactions_to_plot = [     "CXCL3_CXCR2",
+    "CXCL6_CXCR2",
+    "LeukotrieneB4_byLTA4H_LTB4R",
+    "ANXA1_FPR1",
+    "ICAM1_integrin_aMb2_complex",
+     "SELPLG_SELL",
+    "CXCL12_CXCR4"]
+idx = [ id in interactions_to_plot for id in relevant_interactions_long['interacting_pair'] ]
+relevant_interactions_plot = relevant_interactions_long[idx].copy()
+relevant_interactions_plot
+
+from scipy.stats import zscore
+
+relevant_interactions_plot = relevant_interactions_plot.merge(means_long[['id_cp_interaction', 'Interacting_cell', 'Mean']],
+                                                              on = ['id_cp_interaction', 'Interacting_cell'],
+                                                              how = 'inner')
+
+relevant_interactions_plot['Mean_scaled'] = relevant_interactions_plot.groupby('id_cp_interaction', group_keys = False)['Mean'].transform(lambda x : zscore(x, ddof = 1))
+relevant_interactions_plot = relevant_interactions_plot.sort_values('Interacting_cell')
+
+relevant_interactions_plot.head(5)
+
+import seaborn as sns
+
+g = sns.relplot(
+    data = relevant_interactions_plot,
+    x = "Interacting_cell",
+    y = "interacting_pair",
+    hue = "Relevance",
+    size = "Mean_scaled",
+    palette = "vlag",
+    hue_norm=(-1, 1),
+    height = 18,
+    aspect = 0.8,
+    sizes = (0, 200)
+)
+g.set_xticklabels(rotation = 90)
+
+import itertools
+list1 = ['13']
+list2 = ["1","2", '8',"9","10","11","12"]
+interact_rm1 = [ '|'.join(i) for i in itertools.product(list1, repeat = 2) ]
+interact_rm2 = [ '|'.join(i) for i in itertools.product(list2, repeat = 2) ]
+interact_rm=list(set(interact_rm1) | set(interact_rm2))
+idx_keep = [ i not in interact_rm for i in relevant_interactions_plot['Interacting_cell'] ]
+relevant_interactions_plot = relevant_interactions_plot[idx_keep]
+
+import seaborn as sns
+
+g = sns.relplot(
+    data = relevant_interactions_plot,
+    x = "Interacting_cell",
+    y = "interacting_pair",
+    hue = "Relevance",
+    size = "Mean_scaled",
+    palette = "vlag",
+    hue_norm=(-1, 1),
+    height = 6,
+    aspect = 1.6,
+    sizes = (0, 200)
+)
+g.set_xticklabels(rotation = 90)
+
+import pandas as pd
+import seaborn as sns
+
+pair_order = [
+   "CXCL3_CXCR2",
+    "CXCL6_CXCR2",
+    "LeukotrieneB4_byLTA4H_LTB4R",
+    "ANXA1_FPR1",
+    "ICAM1_integrin_aMb2_complex",
+     "SELPLG_SELL",
+    "CXCL12_CXCR4"
+]
+
+relevant_interactions_plot["interacting_pair"] = pd.Categorical(
+    relevant_interactions_plot["interacting_pair"],
+    categories=pair_order,
+    ordered=True
+)
+
+g = sns.relplot(
+    data=relevant_interactions_plot,
+    x="Interacting_cell",
+    y="interacting_pair",
+    hue="Relevance",
+    size="Mean_scaled",
+    palette="vlag",
+    hue_norm=(-1, 1),
+    height=6,
+    aspect=1.6,
+    sizes=(0, 200)
+)
+
+g.set_xticklabels(rotation=90)
+
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+x_order = [
+  "1|2","1|13","8|2","8|13","9|2",
+    "9|13","10|2","10|13","11|2","11|13","12|2","12|13",
+    "2|1","2|8",
+    "2|9","2|10","2|11","2|12","13|1","13|8","13|9","13|10","13|11","13|12"
+]
+
+cell_map = {
+    "1": "DSC1",
+    "2": "DSC2",
+    "8": "NK",
+    "9": "T",
+    "10": "B",
+    "11": "DC",
+    "12": "Mac",
+    "13": "Neu"
+}
+
+def convert_pair(pair):
+    a, b = pair.split("|")
+    return f"{cell_map.get(a, a)}|{cell_map.get(b, b)}"
+
+relevant_interactions_plot["Interacting_cell_label"] = (
+    relevant_interactions_plot["Interacting_cell"].apply(convert_pair)
+)
+
+x_order_label = [convert_pair(x) for x in x_order]
+
+relevant_interactions_plot["Interacting_cell_label"] = pd.Categorical(
+    relevant_interactions_plot["Interacting_cell_label"],
+    categories=x_order_label,
+    ordered=True
+)
+
+relevant_interactions_plot = relevant_interactions_plot.sort_values("Interacting_cell_label")
+
+g = sns.relplot(
+    data=relevant_interactions_plot,
+    x="Interacting_cell_label",
+    y="interacting_pair",
+    hue="Relevance",
+    size="Mean_scaled",
+    palette="vlag",
+    hue_norm=(-1, 1),
+    height=6,
+    aspect=2.4,
+    sizes=(0, 200)
+)
+g.ax.tick_params(axis="x", labelsize=12)
+g.ax.tick_params(axis="y", labelsize=16)
+
+g.set_xticklabels(rotation=60)
+plt.show()
+
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import numpy as np
+
+from matplotlib.lines import Line2D
+from matplotlib.colors import Normalize
+
+g = sns.relplot(
+    data=relevant_interactions_plot,
+    x="Interacting_cell_label",
+    y="interacting_pair",
+    hue="Relevance",
+    size="Mean_scaled",
+
+    palette="vlag",
+    hue_norm=(-1, 1),
+
+    size_norm=(-1, 3),
+    sizes=(8, 100),
+
+    height=3,
+    aspect=3.6,
+
+    legend=False
+)
+
+g.ax.tick_params(
+    axis="y",
+    labelsize=10
+)
+
+g.ax.tick_params(
+    axis="x",
+    labelsize=10
+)
+
+g.set_xticklabels(
+    rotation=45,
+    ha="right"
+)
+
+g.set_axis_labels(
+    "Interacting_cell_label",
+    ""
+)
+
+cmap = sns.color_palette(
+    "vlag",
+    as_cmap=True
+)
+
+norm = Normalize(
+    vmin=-1,
+    vmax=1
+)
+
+relevance_values = [0, 1]
+
+relevance_handles = [
+    Line2D(
+        [0],
+        [0],
+        marker="o",
+        linestyle="",
+        markerfacecolor=cmap(norm(v)),
+        markeredgecolor="none",
+        markersize=6,
+        label=str(v)
+    )
+    for v in relevance_values
+]
+
+legend1 = g.ax.legend(
+    handles=relevance_handles,
+    title="Relevance",
+    loc="upper left",
+    bbox_to_anchor=(1.02, 1.00),
+    frameon=False,
+    handletextpad=1
+)
+
+g.ax.add_artist(legend1)
+
+size_values = [-1, 0, 1, 2, 3]
+
+size_areas = np.interp(
+    size_values,
+    [-1, 3],
+    [8, 100]
+)
+
+size_handles = [
+    Line2D(
+        [0],
+        [0],
+        marker="o",
+        linestyle="",
+        markerfacecolor="#3A3A3A",
+        markeredgecolor="#3A3A3A",
+        markersize=np.sqrt(s),
+
+        label=str(v)
+    )
+    for v, s in zip(size_values, size_areas)
+]
+
+legend2 = g.ax.legend(
+    handles=size_handles,
+    title="Mean_scaled",
+    loc="upper left",
+    bbox_to_anchor=(1.02, 0.58),
+    frameon=False,
+    handletextpad=1,
+    labelspacing=0.8
+)
+
+g.fig.subplots_adjust(
+    right=0.78,
+    bottom=0.28
+)
+
+plt.show()

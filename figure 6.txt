@@ -1,0 +1,644 @@
+# ----------------------------
+# Figures 6A-6C
+# ----------------------------
+getwd();suppressMessages(library(Seurat));library(Matrix);suppressMessages(library(dplyr));library(ggplot2);suppressMessages(library(monocle));suppressMessages(library(SeuratDisk))
+suppressMessages(library(cowplot));suppressMessages(library('pagoda2'));suppressMessages(library("velocyto.R"));suppressMessages(library("patchwork"))
+library("RColorBrewer");library(scales);library(SeuratWrappers);library(argparser);suppressMessages(library(harmony))
+suppressMessages(library(monocle3));suppressMessages(library(clusterProfiler));suppressMessages(library(org.Hs.eg.db))
+setwd("/home/ahmu/ZXK/LPS/");getwd();.libPaths();packageVersion('Seurat')
+pbmc3 <- readRDS("LPS-sub8&9-3423.rds")
+
+Idents(pbmc3)="C5"
+options(repr.plot.width=8, repr.plot.height=6)
+DimPlot(object = pbmc3,label = T,label.size =8,repel=F)+  theme(axis.line=element_blank(),axis.title=element_blank(),axis.text=element_blank(),axis.ticks=element_blank(),legend.text=element_text(size=20,face="plain"),legend.key.height=unit(0.5,"inch"),text=element_text(size=20,face="plain"),strip.text=element_text(size=20))
+
+new.cluster.ids <- c("1 uNK1","2 uNK2","3 uNK3","4 γδ T cells","5 Cd8+ T cells")
+names(new.cluster.ids) <- levels(pbmc3)
+pbmc3 <- RenameIdents(pbmc3, new.cluster.ids)
+pbmc3$celltype5=Idents(pbmc3)
+
+Idents(pbmc3)="C5"
+options(repr.plot.width=12, repr.plot.height=8)
+DimPlot(object = pbmc3,label = T,label.size =10,repel=F)+  theme(axis.line=element_blank(),axis.title=element_blank(),axis.text=element_blank(),axis.ticks=element_blank(),legend.text=element_text(size=28,face="plain"),legend.key.height=unit(0.5,"inch"),text=element_text(size=20,face="plain"),strip.text=element_text(size=20))  +
+scale_colour_manual(values=colorRampPalette(brewer.pal(12, "Paired"))(5)[as.numeric(names(table(Idents(pbmc3))))],labels =rownames(table(pbmc3$celltype5))) 
+
+options(repr.plot.width=16, repr.plot.height=6)
+DimPlot(object = pbmc3, cols = colorRampPalette(brewer.pal(12, "Paired"))(5),
+        label = TRUE,
+        raster = FALSE,
+        label.size = 10,
+        split.by = "groups",
+        pt.size = 0.01) +  theme(axis.line=element_blank(),axis.title=element_blank(),axis.text=element_blank(),axis.ticks=element_blank(),legend.text=element_text(size=28,face="plain"),legend.key.height=unit(0.5,"inch"),text=element_text(size=20,face="plain"),strip.text=element_text(size=28))  +
+scale_colour_manual(values=colorRampPalette(brewer.pal(12, "Paired"))(5)[as.numeric(names(table(Idents(pbmc3))))],labels =rownames(table(pbmc3$celltype5))) 
+
+pbmc3.markers <- FindAllMarkers(object = pbmc3, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+dim(pbmc3.markers)
+
+pbmc3x <- ScaleData(pbmc3,  features = rownames(pbmc3))
+pbmc3.markers %>% group_by(cluster) %>% top_n(n = 10,  wt = avg_log2FC) -> top10
+
+options(repr.plot.width=15, repr.plot.height=18) 
+DoHeatmap(pbmc3x, features = as.character(top10$gene)) + NoLegend() +theme(text=element_text( size=24, face="bold.italic"))
+
+a=AverageExpression(pbmc3x,slot = "scale.data")$RNA
+head(a)
+
+pbmc3.markers %>% group_by(cluster) %>% top_n(n = 10,  wt = avg_log2FC) -> top10
+y=a[unique(as.character(top10$gene)),]
+dim(y)
+
+library(pheatmap);library(Seurat);library(Matrix);library(dplyr);library(ggplot2);suppressMessages(library(tidyverse));library(RColorBrewer)
+make_bold_names <- function(mat, rc_fun, rc_names) {
+  bold_names <- rc_fun(mat)
+  ids <- rc_names %>% match(rc_fun(mat))
+  ids %>%
+    walk(
+      function(i)
+        bold_names[i] <<-
+        bquote(italic(.(rc_fun(mat)[i]))) %>%
+        as.expression()
+    )
+  bold_names
+}
+
+annotation_col = data.frame(
+  Cell_Type = factor(names(table(pbmc3$C5))))
+rownames(annotation_col) =factor(names(table(pbmc3$C5)))
+head(annotation_col);dim(annotation_col)
+
+options(repr.plot.width=8, repr.plot.height=15)
+pheatmap(y,  annotation_legend = FALSE,fontsize=16,  cluster_cols = F, color =  colorRampPalette(c("SkyBlue","white", "Tomato","DarkRed"))(60),
+         breaks=seq(-2,4,0.1),         cluster_rows =F,  border=T,angle_col=0,labels_row = make_bold_names(y, rownames, rownames(y)))
+
+y <- y[!grepl("^ENSMUSG", rownames(y)), , drop = FALSE]
+
+n_cluster <- ncol(y_sub)
+cols <- colorRampPalette(brewer.pal(12, "Paired"))(5)
+names(cols) <- as.character(seq_len(5))
+
+options(repr.plot.width=8, repr.plot.height=15)
+
+pheatmap(
+  y,
+  annotation_legend = FALSE,
+  fontsize = 16,
+  cluster_cols = F,
+  color = colorRampPalette(c("SkyBlue","white","Tomato","DarkRed"))(60),
+  breaks = seq(-2,4,0.1),
+  cluster_rows = F,
+  border = T,
+  angle_col = 0,
+  labels_row = make_bold_names(y, rownames, rownames(y))
+)
+
+cols <- colorRampPalette(brewer.pal(12, "Paired"))(5)
+names(cols) <- as.character(1:5)
+
+annotation_col <- data.frame(
+  Cell_Type = factor(colnames(y), levels = as.character(1:5))
+)
+rownames(annotation_col) <- colnames(y)
+
+ann_colors <- list(
+  Cell_Type = cols
+)
+
+options(repr.plot.width = 8, repr.plot.height = 15)
+
+pheatmap(
+  y,
+  annotation_col = annotation_col,
+  annotation_colors = ann_colors,
+  annotation_legend = FALSE,
+  fontsize = 20,
+  cluster_cols = FALSE,
+  cluster_rows = FALSE,
+  border = TRUE,
+  angle_col = 0,
+  color = colorRampPalette(c("SkyBlue","white","Tomato","DarkRed"))(60),
+  breaks = seq(-2, 4, 0.1),
+  labels_row = make_bold_names(y, rownames, rownames(y))
+)
+# ----------------------------
+# Figure 6D
+# ----------------------------
+celltypes <- c(
+  "uNK1",
+  "uNK2",
+  "uNK3",
+"γδ T cells",
+  "CD8+ T cells"
+)
+
+stopifnot(all(c("celltype", "groups") %in% colnames(pbmc4@meta.data)))
+stopifnot(all(celltypes %in% as.character(pbmc4$celltype)))
+print(table(pbmc4$celltype, pbmc4$groups))
+set.seed(123)
+
+deg_list_gsea <- list()
+
+for (ct in celltypes) {
+
+  message("Running differential expression: ", ct)
+
+  pbmc_ct <- subset(
+    pbmc4,
+    subset = celltype == ct
+  )
+
+  Idents(pbmc_ct) <- "groups"
+
+  n_group <- table(Idents(pbmc_ct))
+  print(n_group)
+
+  if (!all(c("PBS", "LPS") %in% names(n_group))) {
+    message("Skip ", ct, ": missing PBS or LPS")
+    next
+  }
+
+  if (any(n_group[c("PBS", "LPS")] < 3)) {
+    message("Skip ", ct, ": too few cells")
+    next
+  }
+
+  deg_ct <- FindMarkers(
+    object = pbmc_ct,
+    ident.1 = "LPS",
+    ident.2 = "PBS",
+    only.pos = FALSE,
+    min.pct = 0,
+    logfc.threshold = 0
+  )
+
+  deg_ct$gene <- rownames(deg_ct)
+  deg_ct$celltype <- ct
+
+  deg_list_gsea[[ct]] <- deg_ct
+}
+
+print(sapply(deg_list_gsea, nrow))
+
+gsea_list_all <- list()
+gsea_list_simplified <- list()
+
+for (ct in names(deg_list_gsea)) {
+
+  message("==============================")
+  message("Running GO-GSEA: ", ct)
+  message("==============================")
+
+  deg_ct <- deg_list_gsea[[ct]]
+
+  if ("avg_log2FC" %in% colnames(deg_ct)) {
+    fc_col <- "avg_log2FC"
+  } else if ("avg_logFC" %in% colnames(deg_ct)) {
+    fc_col <- "avg_logFC"
+  } else {
+    stop("Cannot find logFC column: ", ct)
+  }
+
+  rank_df <- deg_ct %>%
+    transmute(
+      gene = as.character(gene),
+      score = .data[[fc_col]]
+    ) %>%
+    filter(
+      !is.na(gene),
+      gene != "",
+      !is.na(score),
+      is.finite(score)
+    ) %>%
+    group_by(gene) %>%
+    slice_max(
+      order_by = abs(score),
+      n = 1,
+      with_ties = FALSE
+    ) %>%
+    ungroup()
+
+  rank_df <- rank_df %>%
+    arrange(desc(score), gene)
+
+  geneList <- rank_df$score
+  names(geneList) <- rank_df$gene
+
+  message("Genes used for GSEA: ", length(geneList))
+
+  if (length(geneList) < 100) {
+    message("Skip ", ct, ": too few genes")
+    next
+  }
+
+  gsea_ct <- tryCatch(
+    gseGO(
+      geneList = geneList,
+      OrgDb = org.Mm.eg.db,
+      keyType = "SYMBOL",
+      ont = "BP",
+      minGSSize = 10,
+      maxGSSize = 500,
+      pvalueCutoff = 1,
+      pAdjustMethod = "BH",
+      verbose = FALSE,
+      eps = 0,
+      seed = TRUE
+    ),
+    error = function(e) {
+      message("GSEA failed for ", ct, ": ", e$message)
+      NULL
+    }
+  )
+
+  if (is.null(gsea_ct)) next
+
+  res_all <- as.data.frame(gsea_ct)
+
+  if (nrow(res_all) == 0) {
+    message("No GSEA result: ", ct)
+    next
+  }
+
+  res_all$celltype <- ct
+  res_all$direction <- ifelse(
+    res_all$NES > 0,
+    "LPS",
+    "PBS"
+  )
+
+  gsea_list_all[[ct]] <- res_all
+
+  gsea_ct2 <- tryCatch(
+    simplify(
+      gsea_ct,
+      cutoff = 0.7,
+      by = "p.adjust",
+      select_fun = min
+    ),
+    error = function(e) {
+      message("simplify skipped for ", ct, ": ", e$message)
+      gsea_ct
+    }
+  )
+
+  res_simplified <- as.data.frame(gsea_ct2)
+
+  if (nrow(res_simplified) > 0) {
+
+    res_simplified$celltype <- ct
+
+    res_simplified$direction <- ifelse(
+      res_simplified$NES > 0,
+      "LPS",
+      "PBS"
+    )
+
+    gsea_list_simplified[[ct]] <- res_simplified
+  }
+}
+gsea_all_full <- bind_rows(gsea_list_all)
+
+gsea_all <- bind_rows(gsea_list_simplified)
+
+if (nrow(gsea_all_full) == 0) {
+  stop("No valid GSEA results.")
+}
+
+if (nrow(gsea_all) == 0) {
+  stop("No valid simplified GSEA results.")
+}
+
+gsea_summary <- gsea_all_full %>%
+  group_by(celltype) %>%
+  summarise(
+    total_pathways = n(),
+    significant_pathways = sum(
+      p.adjust < 0.05,
+      na.rm = TRUE
+    ),
+    .groups = "drop"
+  )
+print(gsea_summary)
+
+top5_each <- gsea_all %>%
+  filter(
+    !is.na(p.adjust),
+    p.adjust < 0.05,
+    is.finite(NES)
+  ) %>%
+  group_by(celltype) %>%
+  slice_max(
+    order_by = abs(NES),
+    n = 5,
+    with_ties = FALSE
+  ) %>%
+  ungroup()
+
+if (nrow(top5_each) == 0) {
+  stop("No significant GO terms were found.")
+}
+
+print(
+  top5_each %>%
+    dplyr::select(
+      celltype,
+      ID,
+      Description,
+      NES,
+      p.adjust
+    ) %>%
+    arrange(celltype, desc(abs(NES)))
+)
+
+selected_GO <- unique(top5_each$ID)
+
+message("Number of selected GO terms: ", length(selected_GO))
+
+go_labels <- gsea_all_full %>%
+  dplyr::filter(ID %in% selected_GO) %>%
+  dplyr::select(ID, Description) %>%
+  dplyr::distinct(ID, .keep_all = TRUE)
+
+heat_df <- gsea_all_full %>%
+  dplyr::filter(
+    ID %in% selected_GO,
+    celltype %in% celltypes
+  ) %>%
+  dplyr::select(
+    celltype,
+    ID,
+    NES,
+    p.adjust
+  ) %>%
+  dplyr::distinct(celltype, ID, .keep_all = TRUE)
+
+heat_df <- heat_df %>%
+  tidyr::complete(
+    celltype = celltypes,
+    ID = selected_GO
+  ) %>%
+  dplyr::left_join(
+    go_labels,
+    by = "ID"
+  )
+
+heat_df <- heat_df %>%
+  dplyr::mutate(
+    sig = dplyr::case_when(
+      !is.na(p.adjust) & p.adjust < 0.001 ~ "***",
+      !is.na(p.adjust) & p.adjust < 0.01  ~ "**",
+      !is.na(p.adjust) & p.adjust < 0.05  ~ "*",
+      TRUE ~ ""
+    )
+  )
+
+dim(heat_df)
+head(heat_df)
+
+heat_df %>%
+  dplyr::group_by(celltype) %>%
+  dplyr::summarise(
+    total_GO = dplyr::n(),
+    valid_NES = sum(!is.na(NES)),
+    missing_NES = sum(is.na(NES)),
+    .groups = "drop"
+  )
+
+heat_df$celltype <- factor(
+  heat_df$celltype,
+  levels = celltypes
+)
+
+go_order <- heat_df %>%
+  group_by(ID) %>%
+  summarise(
+    max_abs_NES = if (all(is.na(NES))) {
+      NA_real_
+    } else {
+      max(abs(NES), na.rm = TRUE)
+    },
+    .groups = "drop"
+  ) %>%
+  arrange(max_abs_NES)
+
+heat_df$ID <- factor(
+  heat_df$ID,
+  levels = go_order$ID
+)
+
+max_NES <- max(
+  abs(heat_df$NES),
+  na.rm = TRUE
+)
+
+NA_summary <- heat_df %>%
+  group_by(celltype) %>%
+  summarise(
+    total = n(),
+    valid_NES = sum(!is.na(NES)),
+    NA_count = sum(is.na(NES)),
+    significant = sum(
+      p.adjust < 0.05,
+      na.rm = TRUE
+    ),
+    .groups = "drop"
+  )
+
+print(NA_summary)
+
+p_GSEA <- ggplot(
+  heat_df,
+  aes(
+    x = celltype,
+    y = ID,
+    fill = NES
+  )
+) +
+
+  geom_tile(
+    color = "white",
+    linewidth = 0.7
+  ) +
+
+  geom_text(
+    aes(label = sig),
+    size = 3.5,
+    color = "black"
+  ) +
+
+  scale_y_discrete(
+    labels = setNames(
+      go_labels$Description,
+      go_labels$ID
+    )
+  ) +
+
+  scale_fill_gradient2(
+    low = "#3B4CC0",
+    mid = "white",
+    high = "#B40426",
+    midpoint = 0,
+    limits = c(-max_NES, max_NES),
+    oob = scales::squish,
+    na.value = "grey95",
+    name = "NES"
+  ) +
+
+  labs(
+    x = NULL,
+    y = NULL
+  ) +
+
+  theme_classic() +
+
+  theme(
+    axis.text.x = element_text(
+      size = 11,
+      face = "bold",
+      color = "black",
+      angle = 45,
+      hjust = 1
+    ),
+
+    axis.text.y = element_text(
+      size = 9,
+      color = "black"
+    ),
+
+    axis.ticks = element_blank(),
+
+    legend.title = element_text(size = 11),
+    legend.text = element_text(size = 9),
+
+    plot.margin = margin(10, 10, 10, 10)
+  )
+
+options(
+  repr.plot.width = 11,
+  repr.plot.height = 10
+)
+
+print(p_GSEA)
+
+library(dplyr)
+library(ggplot2)
+selected_terms <- c(
+    # PBS-associated
+     "hydrogen peroxide catabolic process",
+  "ribonucleoprotein complex biogenesis",
+  "rRNA processing",
+  "DNA replication",
+ 
+  # LPS-associated
+    "leukocyte mediated cytotoxicity",
+  "acute inflammatory response",
+  "response to molecule of bacterial origin",
+  "antimicrobial humoral response"
+)
+
+heat_df_selected <- heat_df %>%
+  dplyr::filter(
+    as.character(Description) %in% selected_terms
+  ) %>%
+  dplyr::mutate(
+    Description = factor(
+      as.character(Description),
+      levels = rev(selected_terms)
+    ),
+    celltype = factor(
+      as.character(celltype),
+      levels = c(
+        "uNK1",
+        "uNK2",
+        "uNK3",
+        "γδ T cells",
+        "CD8+ T cells"
+      )
+    )
+  )
+
+unique(as.character(heat_df_selected$Description))
+length(unique(heat_df_selected$Description))
+dim(heat_df_selected)
+
+max_NES <- max(abs(heat_df_selected$NES), na.rm = TRUE)
+
+options(repr.plot.width = 12, repr.plot.height = 5)
+
+p <- ggplot(
+  heat_df_selected,
+  aes(
+    x = celltype,
+    y = Description,
+    fill = NES
+  )
+) +
+  geom_tile(
+    color = "white",
+    linewidth = 0.8
+  ) +
+  geom_text(
+    aes(label = sig),
+    size = 8,
+    color = "black"
+  ) +
+  scale_fill_gradient2(
+    low = "#3B4CC0",
+    mid = "white",
+    high = "#B40426",
+    midpoint = 0,
+    limits = c(-max_NES, max_NES),
+    na.value = "grey95",
+    name = "NES"
+  ) +
+  labs(
+    x = NULL,
+    y = NULL
+  ) +
+  theme_classic(base_size = 12) +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1,
+      face = "bold",
+      color = "black",
+      size = 18
+    ),
+    axis.text.y = element_text(
+      color = "black",
+      size = 18
+    ),
+    axis.ticks = element_blank(),
+    legend.title = element_text(size = 18),
+    legend.text = element_text(size = 18)
+  )
+
+print(p)
+
+# ----------------------------
+# Figure 6E
+# ----------------------------
+meta=as.data.frame(as.array(table(pbmc3$sample2,pbmc3$celltype5)))
+colnames(meta)=c("Sample","Type","Cells")
+head(meta)
+
+library(plyr); library(dplyr);library(scales)
+meta <- ddply(meta, "Sample", transform,  Fraction=Cells/sum(Cells)*100,Fraction2= percent(Cells/sum(Cells), accuracy = 0.1))
+dim(meta)
+
+meta$Sample <- factor(
+  meta$Sample,
+  levels = c(
+    "6.5_PBS",
+    "7.5_PBS",
+    "8.5_PBS",
+    "6.5_LPS",
+    "7.5_LPS",
+    "8.5_LPS"
+  )
+)
+
+options(repr.plot.width=13, repr.plot.height=20)
+ggplot(data=meta,aes(x = Sample, y = Fraction,fill=Type))+  geom_bar(stat="identity", position="stack",color="black",width=0.7,size=0.25)+
+geom_text(aes( label = ifelse(Fraction >= 1, round(Fraction,digits =1),"")),position=position_stack(vjust = 0.5),size=8)   +
+theme(  plot.title=element_text(size=28,hjust=-0.1),axis.text = element_text(size=28,face='bold'),axis.text.x = element_text(size=28,face='bold',angle=60,vjust=1,hjust=1),legend.key.height=unit(0.45,'inch'),
+      legend.text=element_text(size=30), legend.title=element_blank())+ labs( title ="%",x="",y="")+scale_fill_manual(values = colorRampPalette(brewer.pal(12, "Paired"))(5))
